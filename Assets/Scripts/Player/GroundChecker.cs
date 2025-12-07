@@ -4,50 +4,55 @@ using UnityEngine;
 
 public class GroundChecker : NetworkBehaviour
 {
-    [SerializeField] private float distance;
+    [SerializeField] private float distance = 0.18f;
     [SerializeField] private LayerMask mask;
+    [SerializeField] private float checkRadius = 0.2f;
+    [SerializeField] private Vector2 checkOffset = Vector2.zero;
 
     public Action<bool> OnGroundChange;
-    public bool IsGrounded => _ground;
-    private bool _ground;
+    public bool IsGrounded => _ground.Value;
+    
+    private NetworkVariable<bool> _ground = new NetworkVariable<bool>(
+        false,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
 
     public override void OnNetworkSpawn()
     {
-        if (!IsServer) return;
-        // Ensure no multiple subscriptions
-        OnGroundChange -= NotifyClients;
-        OnGroundChange += NotifyClients;
+        _ground.OnValueChanged += OnGroundStateChanged;
     }
 
-    private void Update()
+    public override void OnNetworkDespawn()
+    {
+        _ground.OnValueChanged -= OnGroundStateChanged;
+    }
+
+    private void FixedUpdate()
     {
         if (!IsServer) return;
 
-        bool isGround = Physics2D.Raycast(transform.position, Vector2.down, distance, mask);
-        if (_ground != isGround)
+        Vector2 origin = (Vector2)transform.position + checkOffset;
+        bool isGround = Physics2D.CircleCast(origin, checkRadius, Vector2.down, distance, mask);
+        
+        if (_ground.Value != isGround)
         {
-            _ground = isGround;
-            OnGroundChange?.Invoke(isGround); // Notify clients
+            _ground.Value = isGround;
         }
     }
 
-    private void NotifyClients(bool isGrounded)
+    private void OnGroundStateChanged(bool previousValue, bool newValue)
     {
-        GroundChangeClientRPC(isGrounded);
-    }
-
-    [ClientRpc]
-    private void GroundChangeClientRPC(bool isGrounded)
-    {
-        if (IsServer) return; // Prevent server from updating itself via RPC
-
-        _ground = isGrounded;
-        OnGroundChange?.Invoke(_ground); // Notify local listeners
+        OnGroundChange?.Invoke(newValue);
     }
 
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Physics2D.Raycast(transform.position, Vector2.down, distance, mask) ? Color.green : Color.red;
-        Gizmos.DrawLine(transform.position, transform.position + Vector3.down * distance);
+        Vector2 origin = (Vector2)transform.position + checkOffset;
+        bool isGrounded = Physics2D.CircleCast(origin, checkRadius, Vector2.down, distance, mask);
+        
+        Gizmos.color = isGrounded ? Color.green : Color.red;
+        Gizmos.DrawLine(origin, origin + Vector2.down * distance);
+        Gizmos.DrawWireSphere(origin, checkRadius);
+        Gizmos.DrawWireSphere(origin + Vector2.down * distance, checkRadius);
     }
 }

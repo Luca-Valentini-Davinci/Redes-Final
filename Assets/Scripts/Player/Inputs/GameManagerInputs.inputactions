@@ -1,0 +1,55 @@
+{
+    "version": 1,
+    "name": "GameManagerInputs",
+    "maps": [
+        {
+            "name": "Cheats",
+            "id": "91359be3-dd21-4138-b198-fb1ee2805c7d",
+            "actions": [
+                {
+                    "name": "StopHost",
+                    "type": "Button",
+                    "id": "4dfa7672-9006-474c-880b-f3aadad71380",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "StartHost",
+                    "type": "Button",
+                    "id": "6c348835-5cbf-46d1-966d-5ffd01c5f838",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "34b53e88-4834-4dd2-b5ba-14260dc62ddc",
+                    "path": "<Keyboard>/f1",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "StopHost",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "fc026d4c-eb62-4f17-a88c-73da52c09740",
+                    "path": "<Keyboard>/f2",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "StartHost",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}

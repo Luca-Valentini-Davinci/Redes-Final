@@ -265,6 +265,8 @@ SpriteRenderer:
   m_RayTracingAccelStructBuildFlagsOverride: 0
   m_RayTracingAccelStructBuildFlags: 1
   m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -286,6 +288,7 @@ SpriteRenderer:
   m_AutoUVMaxDistance: 0.5
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
@@ -438,11 +441,13 @@ GameObject:
   - component: {fileID: 6285068559748071595}
   - component: {fileID: 2032466067318828304}
   - component: {fileID: 3985925295301443689}
+  - component: {fileID: 8598656741813576326}
+  - component: {fileID: 5768776564133308523}
+  - component: {fileID: 4918054264006194058}
   - component: {fileID: 3821841633805887851}
   - component: {fileID: 4315220967149247750}
   - component: {fileID: 3497476833684170989}
   - component: {fileID: 8637714062014031740}
-  - component: {fileID: 8598656741813576326}
   m_Layer: 3
   m_Name: Player
   m_TagString: Untagged
@@ -511,8 +516,19 @@ MonoBehaviour:
   inputs: {fileID: 11400000, guid: ce76e3b200698c944812b4be1d27fe9e, type: 2}
   lifeBar: {fileID: 1586757852449876200}
   nicknameText: {fileID: 6666203800401043087}
-  moveSpeed: 2
-  jumpForce: 3
+  moveSpeed: 5
+  accelerationTime: 0.05
+  decelerationTime: 0.02
+  jumpHeight: 3
+  jumpTimeToApex: 0.65
+  jumpTimeToDescent: 0.45
+  jumpDistance: 3
+  jumpVelocity: 9.230769
+  jumpGravity: 14.201185
+  fallGravity: 29.629631
+  horizontalJumpSpeed: 2.7272727
+  minJumpHeight: 0.8
+  jumpCutGravityMultiplier: 1.8
   PlayerNumber:
     m_InternalValue: 0
   NickName:
@@ -563,10 +579,70 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
-  distance: 0.18
+  distance: 0.05
   mask:
     serializedVersion: 2
     m_Bits: 64
+  checkRadius: 0.07
+  checkOffset: {x: 0, y: -0.12}
+--- !u!114 &8598656741813576326
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6834225632075196100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 84d04d4bf28e4597b40e399ca97bc23c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
+  lifeBar: {fileID: 1586757852449876200}
+  maxLifeTime: 60
+  syncInterval: 1
+  LifeTime:
+    m_InternalValue: 60
+  IsLifeActive:
+    m_InternalValue: 0
+--- !u!114 &5768776564133308523
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6834225632075196100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eaf41f16208e40b3aef1698f394bdebb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Network.Platformer.PlayerStun
+  ShowTopMostFoldoutHeaderGroup: 1
+  animator: {fileID: 8737920731511591882}
+  IsStunned:
+    m_InternalValue: 0
+  StunTimeRemaining:
+    m_InternalValue: 0
+--- !u!114 &4918054264006194058
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6834225632075196100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62fce4e912ed7c74ebb4787d3c0367d2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Network.Platformer.HeadBounce
+  ShowTopMostFoldoutHeaderGroup: 1
+  checkSize: {x: 0.16, y: 0.07}
+  checkOffset: {x: 0, y: -0.16}
+  playerLayer:
+    serializedVersion: 2
+    m_Bits: 8
+  bounceForce: 8
+  stunDuration: 3
 --- !u!61 &3821841633805887851
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -577,7 +653,7 @@ BoxCollider2D:
   m_Enabled: 1
   serializedVersion: 3
   m_Density: 1
-  m_Material: {fileID: 6200000, guid: 81438d9305b1a9247986372a180af944, type: 2}
+  m_Material: {fileID: 6200000, guid: 873e80c730e422746b0ca4d24211b0c1, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -601,7 +677,7 @@ BoxCollider2D:
   m_UsedByEffector: 0
   m_CompositeOperation: 0
   m_CompositeOrder: 0
-  m_Offset: {x: 0.01, y: 0}
+  m_Offset: {x: 0.010000005, y: -0.0037385672}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0, y: 0}
@@ -611,7 +687,7 @@ BoxCollider2D:
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 0.25, y: 0.275}
+  m_Size: {x: 0.25, y: 0.26752287}
   m_EdgeRadius: 0
 --- !u!50 &4315220967149247750
 Rigidbody2D:
@@ -625,18 +701,18 @@ Rigidbody2D:
   m_Simulated: 1
   m_UseFullKinematicContacts: 0
   m_UseAutoMass: 0
-  m_Mass: 1
-  m_LinearDamping: 0
+  m_Mass: 15
+  m_LinearDamping: 7.5
   m_AngularDamping: 0.05
-  m_GravityScale: 1
-  m_Material: {fileID: 6200000, guid: 81438d9305b1a9247986372a180af944, type: 2}
+  m_GravityScale: 0
+  m_Material: {fileID: 6200000, guid: 873e80c730e422746b0ca4d24211b0c1, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
   m_ExcludeLayers:
     serializedVersion: 2
     m_Bits: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_SleepingMode: 1
   m_CollisionDetection: 1
   m_Constraints: 4
@@ -655,16 +731,16 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   NetworkTransformExpanded: 0
   AutoOwnerAuthorityTickOffset: 1
-  PositionInterpolationType: 0
+  PositionInterpolationType: 1
   RotationInterpolationType: 0
   ScaleInterpolationType: 0
   PositionLerpSmoothing: 1
-  PositionMaxInterpolationTime: 0.1
+  PositionMaxInterpolationTime: 0.05
   RotationLerpSmoothing: 1
   RotationMaxInterpolationTime: 0.1
   ScaleLerpSmoothing: 1
   ScaleMaxInterpolationTime: 0.1
-  AuthorityMode: 0
+  AuthorityMode: 1
   TickSyncChildren: 0
   UseUnreliableDeltas: 0
   SyncPositionX: 1
@@ -681,7 +757,7 @@ MonoBehaviour:
   ScaleThreshold: 0.01
   UseQuaternionSynchronization: 0
   UseQuaternionCompression: 0
-  UseHalfFloatPrecision: 0
+  UseHalfFloatPrecision: 1
   InLocalSpace: 0
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
@@ -700,29 +776,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
   NetworkRigidbodyBaseExpanded: 0
-  UseRigidBodyForMotion: 0
+  UseRigidBodyForMotion: 1
   AutoUpdateKinematicState: 1
   AutoSetKinematicOnDespawn: 0
---- !u!114 &8598656741813576326
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6834225632075196100}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 84d04d4bf28e4597b40e399ca97bc23c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ShowTopMostFoldoutHeaderGroup: 1
-  lifeBar: {fileID: 1586757852449876200}
-  maxLifeTime: 60
-  syncInterval: 1
-  LifeTime:
-    m_InternalValue: 60
-  IsLifeActive:
-    m_InternalValue: 0
 --- !u!1 &6999569625898964088
 GameObject:
   m_ObjectHideFlags: 0

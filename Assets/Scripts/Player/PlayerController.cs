@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading.Tasks;
 using TMPro;
 using Unity.Collections;
 using Unity.Netcode;
@@ -23,9 +24,30 @@ namespace Network.Platformer
 
         [Header("Movement Settings")]
         [SerializeField] private float moveSpeed = 5f;
-        [SerializeField] private float jumpForce = 10f;
+        [SerializeField] private float accelerationTime = 0.05f;
+        [SerializeField] private float decelerationTime = 0.02f;
+
+        [Header("Jump Design Parameters (GDC Method)")]
+        [SerializeField] private float jumpHeight = 3f;
+        [SerializeField] private float jumpTimeToApex = 0.65f;
+        [SerializeField] private float jumpTimeToDescent = 0.45f;
+        [SerializeField] private float jumpDistance = 3f;
+        
+        [Header("Calculated Values (Read-Only)")]
+        [SerializeField] private float jumpVelocity;
+        [SerializeField] private float jumpGravity;
+        [SerializeField] private float fallGravity;
+        [SerializeField] private float horizontalJumpSpeed;
+
+        [Header("Variable Jump Height")]
+        [SerializeField] private float minJumpHeight = 0.8f;
+        [SerializeField] private float jumpCutGravityMultiplier = 1.8f;
 
         private float lastDirection = 1f;
+        private bool inputEnabled = true;
+        private bool isJumpHeld = false;
+        private PlayerStun playerStun;
+        
         private static readonly int RunningHash = Animator.StringToHash("Running");
         private static readonly int IsInAirHash = Animator.StringToHash("IsInAir");
         private static readonly int JumpHash = Animator.StringToHash("Jump");
@@ -42,12 +64,27 @@ namespace Network.Platformer
                 NetworkVariableReadPermission.Everyone,
                 NetworkVariableWritePermission.Server);
 
+        private void Awake()
+        {
+            CalculateJumpPhysics();
+        }
+
+        private void CalculateJumpPhysics()
+        {
+            jumpVelocity = (2f * jumpHeight) / jumpTimeToApex;
+            jumpGravity = (2f * jumpHeight) / Mathf.Pow(jumpTimeToApex, 2f);
+            fallGravity = (2f * jumpHeight) / Mathf.Pow(jumpTimeToDescent, 2f);
+            horizontalJumpSpeed = jumpDistance / (jumpTimeToApex + jumpTimeToDescent);
+        }
+
         private void Start()
         {
             if (!rb || !spriteRen || !anim || !inputs)
                 Debug.LogError($"Player Controller missing components {gameObject.name}");
             if (!TryGetComponent(out _groundChecker))
                 Debug.LogError($"No GroundChecker {gameObject.name}");
+            
+            playerStun = GetComponent<PlayerStun>();
         }
 
         public override void OnNetworkSpawn()
@@ -56,7 +93,7 @@ namespace Network.Platformer
             {
                 anim.Animator.SetInteger("PlayerNum", newValue - 1);
             };
-
+           
             NickName.OnValueChanged += NicknameChanged;
 
             if (IsServer)
@@ -65,10 +102,24 @@ namespace Network.Platformer
                 NetworkManager.Singleton.OnConnectionEvent += OnClientConnected;
             }
 
+            if (IsClient)
+            {
+                TeleportOnSpawn();
+            }
             if (IsOwner)
             {
                 SubscribeInputs();
             }
+        }
+
+        private async void TeleportOnSpawn()
+        {
+            await Task.Delay(1000);
+            TeleportTo(new Vector2(0,4));
+        }
+        private void TeleportTo(Vector2 vector2)
+        {
+            rb.Rigidbody2D.position = vector2;
         }
 
         private void OnDestroy()
@@ -83,7 +134,6 @@ namespace Network.Platformer
         {
             if (data.EventType == ConnectionEvent.ClientConnected)
             {
-                // 🔄 Mandar todos los nicks al nuevo cliente
                 foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
                 {
                     if (client.PlayerObject != null)
@@ -105,79 +155,179 @@ namespace Network.Platformer
 
         private void SubscribeInputs()
         {
-            inputs.Jump += () =>
-            {
-                if (_groundChecker.IsGrounded)
-                {
-                    Vector2 vel = rb.Rigidbody2D.linearVelocity;
-                    vel.y = jumpForce;
-                    rb.Rigidbody2D.linearVelocity = vel;
-                }
+            inputs.Jump += OnJumpPressed;
+        }
 
-                JumpServerRpc();
-            };
+        private void OnJumpPressed()
+        {
+            if (!inputEnabled || !_groundChecker.IsGrounded) return;
+            
+            isJumpHeld = true;
+            
+            // Local jump for immediate feedback
+            Vector2 vel = rb.Rigidbody2D.linearVelocity;
+            vel.y = jumpVelocity;
+            rb.Rigidbody2D.linearVelocity = vel;
+            
+            anim.Animator.SetBool(JumpHash, true);
+            
+            // Notify server
+            JumpServerRpc();
         }
 
         private void Update()
         {
-            if (!IsOwner) return;
+            spriteRen.flipX = lastDirection < 0;
+            if (!IsOwner || !inputEnabled) return;
 
             float direction = inputs.HorizontalAxis;
+            
             if (direction != 0)
                 lastDirection = direction;
 
-            spriteRen.flipX = lastDirection < 0;
+            // Update jump hold state
+            if (isJumpHeld && !_groundChecker.IsGrounded)
+            {
+                if (rb.Rigidbody2D.linearVelocity.y <= 0)
+                {
+                    isJumpHeld = false;
+                }
+            }
 
-            Vector2 vel = rb.Rigidbody2D.linearVelocity;
-            vel.x = direction * moveSpeed;
-            rb.Rigidbody2D.linearVelocity = vel;
+            if (_groundChecker.IsGrounded)
+            {
+                isJumpHeld = false;
+            }
 
-            anim.Animator.SetBool(RunningHash, Mathf.Abs(direction) > 0.01f);
-            anim.Animator.SetBool(IsInAirHash, !_groundChecker.IsGrounded);
-
-            if (!_groundChecker.IsGrounded && vel.y < 0)
-                anim.Animator.SetBool(JumpHash, false);
-
-            MoveServerRpc(direction);
+            // Apply movement locally (Owner authority)
+            ApplyMovement(direction);
+            
+            // Update visuals locally
+            UpdateVisuals(direction);
+            
+            // Sync to server
+            SyncMovementServerRpc(direction, lastDirection, isJumpHeld);
         }
 
-        #region Server Authority
-        [ServerRpc]
-        private void MoveServerRpc(float direction)
+        private void ApplyMovement(float direction)
         {
+            float targetVelocityX = direction * moveSpeed;
+            float smoothing = (Mathf.Abs(direction) > 0.01f) ? accelerationTime : decelerationTime;
+            
             Vector2 vel = rb.Rigidbody2D.linearVelocity;
-            vel.x = direction * moveSpeed;
+            vel.x = Mathf.Lerp(vel.x, targetVelocityX, Time.deltaTime / smoothing);
+            
+            if (Mathf.Abs(vel.x) < 0.1f && Mathf.Abs(direction) < 0.01f)
+                vel.x = 0;
+                
             rb.Rigidbody2D.linearVelocity = vel;
+        }
 
-            if (direction != 0)
-                lastDirection = direction;
-
+        private void UpdateVisuals(float direction)
+        {
             spriteRen.flipX = lastDirection < 0;
-
             anim.Animator.SetBool(RunningHash, Mathf.Abs(direction) > 0.01f);
             anim.Animator.SetBool(IsInAirHash, !_groundChecker.IsGrounded);
 
+            Vector2 vel = rb.Rigidbody2D.linearVelocity;
             if (!_groundChecker.IsGrounded && vel.y < 0)
                 anim.Animator.SetBool(JumpHash, false);
+        }
+
+        private void FixedUpdate()
+        {
+            // Both client and server apply gravity for consistency
+            ApplyCustomGravity();
+            
+            if (_groundChecker.IsGrounded)
+            {
+                ApplyGroundDrag();
+            }
+        }
+
+        private void ApplyCustomGravity()
+        {
+            if (_groundChecker.IsGrounded) return;
+
+            Vector2 vel = rb.Rigidbody2D.linearVelocity;
+            float gravityToApply;
+
+            if (vel.y > 0f)
+            {
+                if (isJumpHeld)
+                {
+                    gravityToApply = -jumpGravity;
+                }
+                else
+                {
+                    gravityToApply = -jumpGravity * jumpCutGravityMultiplier;
+                }
+            }
+            else
+            {
+                gravityToApply = -fallGravity;
+            }
+
+            vel.y += gravityToApply * Time.fixedDeltaTime;
+            rb.Rigidbody2D.linearVelocity = vel;
+        }
+
+        private void ApplyGroundDrag()
+        {
+            if (!inputEnabled) return;
+            
+            Vector2 vel = rb.Rigidbody2D.linearVelocity;
+            
+            if (Mathf.Abs(vel.x) > 0.01f && Mathf.Abs(inputs.HorizontalAxis) < 0.01f)
+            {
+                vel.x *= 0.85f;
+                if (Mathf.Abs(vel.x) < 0.1f)
+                    vel.x = 0;
+                rb.Rigidbody2D.linearVelocity = vel;
+            }
+        }
+
+        public void SetInputEnabled(bool enabled)
+        {
+            if (enabled && playerStun != null && playerStun.IsStunned.Value)
+            {
+                return;
+            }
+
+            inputEnabled = enabled;
+            
+            if (!enabled)
+            {
+                Vector2 vel = rb.Rigidbody2D.linearVelocity;
+                vel.x = 0;
+                rb.Rigidbody2D.linearVelocity = vel;
+                
+                anim.Animator.SetBool(RunningHash, false);
+            }
+        }
+
+        #region Server RPCs
+        [ServerRpc]
+        private void SyncMovementServerRpc(float direction, float facingDirection, bool jumpHeld)
+        {
+            if (!IsOwner) // Server validates
+            {
+                isJumpHeld = jumpHeld;
+                lastDirection = facingDirection;
+            }
         }
 
         [ServerRpc]
         private void JumpServerRpc()
         {
-            if (!_groundChecker.IsGrounded) return;
-
-            Vector2 vel = rb.Rigidbody2D.linearVelocity;
-            vel.y = jumpForce;
-            rb.Rigidbody2D.linearVelocity = vel;
-
-            anim.Animator.SetBool(JumpHash, true);
+            // Server already sees the jump from NetworkRigidbody sync
+            // This is just for validation if needed
         }
 
         [ServerRpc]
         public void SendNicknameToServerRpc(string nickname)
         {
             NickName.Value = new FixedString32Bytes(nickname);
-
             SendNicknameToAllClientRpc(nickname);
         }
 
@@ -196,5 +346,10 @@ namespace Network.Platformer
             }
         }
         #endregion
+
+        private void OnValidate()
+        {
+            CalculateJumpPhysics();
+        }
     }
 }
