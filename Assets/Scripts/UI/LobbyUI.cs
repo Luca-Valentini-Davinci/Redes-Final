@@ -1,26 +1,22 @@
-﻿using System;
-using TMPro;
+﻿using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Network.Platformer
 {
-    public class MenuUI : MonoBehaviour
+    public class LobbyUI : MonoBehaviour
     {
-       
-        [Header("Menu Panel")]
-        [SerializeField] private GameObject menuPanel;
-
         [Header("Lobby Panel")]
         [SerializeField] private GameObject lobbyPanel;
         [SerializeField] private TextMeshProUGUI playerCountText;
         [SerializeField] private Button startGameButton;
         [SerializeField] private TextMeshProUGUI startButtonText;
+        [SerializeField] private Button leaveLobbyButton;
 
         private void Start()
         {
-            ShowMenu();
+            ShowLobby();
 
             if (startGameButton != null)
             {
@@ -28,15 +24,14 @@ namespace Network.Platformer
                 startGameButton.interactable = false;
             }
 
-            if (NetworkManager.Singleton != null)
+            if (leaveLobbyButton != null)
             {
-                NetworkManager.Singleton.OnClientStarted += OnClientStarted;
+                leaveLobbyButton.onClick.AddListener(OnLeaveLobbyClicked);
             }
 
             if (GameManager.Instance != null)
             {
                 GameManager.Instance.OnCanStartGameChanged += UpdateStartButton;
-                GameManager.Instance.OnLobbyLeft += OnLobbyLeft;
             }
         }
 
@@ -54,45 +49,40 @@ namespace Network.Platformer
             if (startGameButton != null)
                 startGameButton.onClick.RemoveListener(OnStartGameClicked);
 
-            if (NetworkManager.Singleton != null)
-            {
-                NetworkManager.Singleton.OnClientStarted -= OnClientStarted;
-            }
+            if (leaveLobbyButton != null)
+                leaveLobbyButton.onClick.RemoveListener(OnLeaveLobbyClicked);
 
             if (GameManager.Instance != null)
             {
                 GameManager.Instance.OnCanStartGameChanged -= UpdateStartButton;
-                GameManager.Instance.OnLobbyLeft -= OnLobbyLeft;
             }
-        }
-
-        private void OnClientStarted()
-        {
-            ShowLobby();
         }
 
         private void OnStartGameClicked()
         {
-            if (GameManager.Instance != null && NetworkManager.Singleton.IsHost)
+            if (GameManager.Instance != null && NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost)
             {
                 GameManager.Instance.StartGame();
             }
         }
 
-        private void ShowMenu()
+        private void OnLeaveLobbyClicked()
         {
-            if (menuPanel != null)
-                menuPanel.SetActive(true);
+            if (NetworkManager.Singleton == null) return;
 
-            if (lobbyPanel != null)
-                lobbyPanel.SetActive(false);
+            if (NetworkManager.Singleton.IsHost)
+            {
+                NetworkManager.Singleton.Shutdown();
+            }
+            
+            if (NetworkConnectionManager.Instance != null)
+            {
+                NetworkConnectionManager.Instance.ReturnToMainMenu();
+            }
         }
 
         private void ShowLobby()
         {
-            if (menuPanel != null)
-                menuPanel.SetActive(false);
-
             if (lobbyPanel != null)
                 lobbyPanel.SetActive(true);
         }
@@ -127,12 +117,6 @@ namespace Network.Platformer
             {
                 startGameButton.interactable = canStart && NetworkManager.Singleton.IsHost;
             }
-        }
-
-        private void OnLobbyLeft()
-        {
-            if (lobbyPanel != null)
-                lobbyPanel.SetActive(false);
         }
     }
 }

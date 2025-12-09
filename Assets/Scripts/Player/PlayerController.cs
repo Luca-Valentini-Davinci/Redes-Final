@@ -104,11 +104,15 @@ namespace Network.Platformer
             };
            
             NickName.OnValueChanged += NicknameChanged;
+            
+            if (NickName.Value.Length > 0)
+            {
+                NicknameChanged(default, NickName.Value);
+            }
 
             if (IsServer)
             {
                 PlayerNumber.Value = NetworkManager.Singleton.ConnectedClientsList.Count;
-                NetworkManager.Singleton.OnConnectionEvent += OnClientConnected;
             }
 
             if (IsClient)
@@ -124,7 +128,7 @@ namespace Network.Platformer
         private async void TeleportOnSpawn()
         {
             await Task.Delay(1000);
-            RequestTeleportServerRpc(new Vector2(0, 4));
+            RequestTeleportServerRpc(new Vector2(0, .9f));
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -153,35 +157,17 @@ namespace Network.Platformer
             }
         }
 
-        private void OnDestroy()
-        {
-            if (IsServer && NetworkManager.Singleton != null)
-            {
-                NetworkManager.Singleton.OnConnectionEvent -= OnClientConnected;
-            }
-        }
-
-        private void OnClientConnected(NetworkManager nm, ConnectionEventData data)
-        {
-            if (data.EventType == ConnectionEvent.ClientConnected)
-            {
-                foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
-                {
-                    if (client.PlayerObject != null)
-                    {
-                        var pc = client.PlayerObject.GetComponent<PlayerController>();
-                        if (pc != null)
-                        {
-                            pc.SendNicknameToClientRpc(pc.NickName.Value.ToString(), data.ClientId);
-                        }
-                    }
-                }
-            }
-        }
-
         private void NicknameChanged(FixedString32Bytes previousValue, FixedString32Bytes newValue)
         {
-            nicknameText.text = newValue.ToString();
+            if (nicknameText != null)
+            {
+                nicknameText.text = newValue.ToString();
+                Debug.Log($"[PlayerController] Nickname changed to: {newValue} for client {OwnerClientId}");
+            }
+            else
+            {
+                Debug.LogWarning($"[PlayerController] nicknameText is null for client {OwnerClientId}");
+            }
         }
 
         private void SubscribeInputs()
@@ -419,6 +405,71 @@ namespace Network.Platformer
             }
         }
 
+        public void RespawnPlayer(Vector2 spawnPosition)
+        {
+            if (!IsServer) return;
+            
+            isDead = false;
+            
+            EnablePhysics();
+            EnableCollisions();
+            ResetVisuals();
+            TeleportTo(spawnPosition);
+            
+            inputEnabled = true;
+            
+            TriggerRespawnAnimationClientRpc();
+        }
+
+        [ClientRpc]
+        private void TriggerRespawnAnimationClientRpc()
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RespawnHash, true);
+                anim.Animator.SetBool(DeathHash, false);
+            }
+            
+            if (spriteRen != null)
+            {
+                spriteRen.color = Color.white;
+                spriteRen.enabled = true;
+            }
+        }
+
+        private void EnablePhysics()
+        {
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.bodyType = RigidbodyType2D.Dynamic;
+                rb.Rigidbody2D.gravityScale = 1f;
+                rb.Rigidbody2D.linearVelocity = Vector2.zero;
+            }
+        }
+
+        private void EnableCollisions()
+        {
+            if (colliders != null)
+            {
+                foreach (var col in colliders)
+                {
+                    if (col != null)
+                    {
+                        col.enabled = true;
+                    }
+                }
+            }
+        }
+
+        private void ResetVisuals()
+        {
+            if (spriteRen != null)
+            {
+                spriteRen.color = Color.white;
+                spriteRen.enabled = true;
+            }
+        }
+
         #region Server RPCs
         [ServerRpc]
         private void SyncMovementServerRpc(float direction, float facingDirection, bool jumpHeld)
@@ -441,22 +492,6 @@ namespace Network.Platformer
         public void SendNicknameToServerRpc(string nickname)
         {
             NickName.Value = new FixedString32Bytes(nickname);
-            SendNicknameToAllClientRpc(nickname);
-        }
-
-        [ClientRpc]
-        private void SendNicknameToAllClientRpc(string nickname)
-        {
-            nicknameText.text = nickname;
-        }
-
-        [ClientRpc]
-        private void SendNicknameToClientRpc(string nickname, ulong targetClientId)
-        {
-            if (NetworkManager.Singleton.LocalClientId == targetClientId)
-            {
-                nicknameText.text = nickname;
-            }
         }
         #endregion
 

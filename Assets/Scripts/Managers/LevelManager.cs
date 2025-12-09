@@ -330,7 +330,7 @@ namespace Network.Platformer
             EndLevel();
         }
 
-        private void OnDestroy()
+        public override void OnDestroy()
         {
             if (Instance == this)
             {

@@ -13,7 +13,7 @@ namespace Network.Platformer
         [Header("Settings")]
         [SerializeField] private float delayBeforeShowingResults = 2f;
 
-        public NetworkVariable<bool> IsGameEnded = new NetworkVariable<bool>(
+        public NetworkVariable<bool> isGameEnded = new NetworkVariable<bool>(
             false,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
@@ -72,7 +72,7 @@ namespace Network.Platformer
 
         private void HandlePlayerDeath(ulong clientId)
         {
-            if (!IsServer || IsGameEnded.Value) return;
+            if (!IsServer || isGameEnded.Value) return;
 
             eliminatedPlayers.Add(clientId);
             NotifyPlayerEliminatedClientRpc(clientId);
@@ -91,7 +91,7 @@ namespace Network.Platformer
 
         private void HandleTimeExpired()
         {
-            if (!IsServer || IsGameEnded.Value) return;
+            if (!IsServer || isGameEnded.Value) return;
 
             var alivePlayers = GetAlivePlayers();
 
@@ -109,6 +109,7 @@ namespace Network.Platformer
         {
             return NetworkManager.Singleton.ConnectedClientsList
                 .Where(client => !eliminatedPlayers.Contains(client.ClientId))
+                .Where(client => GameManager.Instance == null || !GameManager.Instance.IsPlayerSpectator(client.ClientId))
                 .ToList();
         }
 
@@ -135,9 +136,9 @@ namespace Network.Platformer
 
         private void EndGame(GameEndReason reason, ulong winnerId)
         {
-            if (!IsServer || IsGameEnded.Value) return;
+            if (!IsServer || isGameEnded.Value) return;
 
-            IsGameEnded.Value = true;
+            isGameEnded.Value = true;
 
             if (LevelManager.Instance != null)
             {
@@ -169,6 +170,16 @@ namespace Network.Platformer
             return eliminatedPlayers.Contains(clientId);
         }
 
+        public void ReturnToLobby()
+        {
+            if (!IsServer) return;
+
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.EndGame();
+            }
+        }
+
         [ClientRpc]
         private void NotifyPlayerEliminatedClientRpc(ulong eliminatedClientId)
         {
@@ -181,7 +192,7 @@ namespace Network.Platformer
             OnGameEnded?.Invoke(reason, winnerId);
         }
 
-        private void OnDestroy()
+        public override void OnDestroy()
         {
             if (Instance == this)
             {

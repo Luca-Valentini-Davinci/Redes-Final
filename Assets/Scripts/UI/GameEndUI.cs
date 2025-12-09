@@ -29,7 +29,17 @@ namespace Network.Platformer
                 gameEndPanel.SetActive(false);
 
             if (spectatorPanel != null)
-                spectatorPanel.SetActive(false);
+            {
+                bool isSpectator = GameManager.Instance != null && 
+                                   NetworkManager.Singleton != null && 
+                                   GameManager.Instance.IsPlayerSpectator(NetworkManager.Singleton.LocalClientId);
+                spectatorPanel.SetActive(isSpectator);
+
+                if (isSpectator && spectatorText != null)
+                {
+                    spectatorText.text = "SPECTATOR MODE\nYou joined during a match";
+                }
+            }
 
             if (returnToLobbyButton != null)
                 returnToLobbyButton.onClick.AddListener(OnReturnToLobby);
@@ -145,6 +155,9 @@ namespace Network.Platformer
 
         private string GetPlayerName(ulong clientId)
         {
+            if (NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.ContainsKey(clientId))
+                return $"Player {clientId}";
+
             var client = NetworkManager.Singleton.ConnectedClients[clientId];
             if (client?.PlayerObject != null)
             {
@@ -172,13 +185,11 @@ namespace Network.Platformer
 
         private void OnReturnToLobby()
         {
-            // Implement return to lobby logic
-            if (NetworkManager.Singleton != null)
+            if (NetworkManager.Singleton == null) return;
+
+            if (NetworkManager.Singleton.IsHost && GameEndManager.Instance != null)
             {
-                if (NetworkManager.Singleton.IsHost)
-                {
-                    NetworkManager.Singleton.SceneManager.LoadScene("MenuScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
-                }
+                GameEndManager.Instance.ReturnToLobby();
             }
         }
     }

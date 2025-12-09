@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.SceneManagement;
 
 namespace Network.Platformer
 {
@@ -13,7 +12,6 @@ namespace Network.Platformer
 
         [Header("Settings")]
         [SerializeField] private int minPlayersToStart = 2;
-        [SerializeField] private string gameSceneName = "GameScene";
         [SerializeField] private float countdownTime = 3f;
 
         public NetworkVariable<bool> CanStartGame = new NetworkVariable<bool>(
@@ -21,7 +19,7 @@ namespace Network.Platformer
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
-        public NetworkVariable<bool> IsGameStarted = new NetworkVariable<bool>(
+        public NetworkVariable<bool> IsGameInProgress = new NetworkVariable<bool>(
             false,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
@@ -35,7 +33,8 @@ namespace Network.Platformer
         public event Action OnGameStarted;
         public event Action<float> OnCountdownTick;
         public event Action OnCountdownFinished;
-        public event Action OnLobbyLeft;
+
+        private HashSet<ulong> spectatorPlayers = new HashSet<ulong>();
 
         private void Awake()
         {
@@ -49,77 +48,6 @@ namespace Network.Platformer
             DontDestroyOnLoad(gameObject);
         }
 
-        private PlayerInput playerInput;
-        private void Start()
-        {
-            if (playerInput == null)
-            {
-                playerInput = GetComponent<PlayerInput>();
-            }
-
-            if (playerInput != null)
-            {
-                SubscribeToInputEvents();
-            }
-        }
-
-        private void SubscribeToInputEvents()
-        {
-            var cheatsActionMap = playerInput.actions.FindActionMap("Cheats");
-            if (cheatsActionMap != null)
-            {
-                var stopHostAction = cheatsActionMap.FindAction("StopHost");
-                var startHostAction = cheatsActionMap.FindAction("StartHost");
-
-                if (stopHostAction != null)
-                {
-                    stopHostAction.performed += OnStopHostPerformed;
-                }
-
-                if (startHostAction != null)
-                {
-                    startHostAction.performed += OnStartHostPerformed;
-                }
-            }
-        }
-        private void UnsubscribeFromInputEvents()
-        {
-            if (playerInput == null) return;
-
-            var cheatsActionMap = playerInput.actions.FindActionMap("Cheats");
-            if (cheatsActionMap != null)
-            {
-                var stopHostAction = cheatsActionMap.FindAction("StopHost");
-                var startHostAction = cheatsActionMap.FindAction("StartHost");
-
-                if (stopHostAction != null)
-                {
-                    stopHostAction.performed -= OnStopHostPerformed;
-                }
-
-                if (startHostAction != null)
-                {
-                    startHostAction.performed -= OnStartHostPerformed;
-                }
-            }
-        }
-
-        private void OnStopHostPerformed(InputAction.CallbackContext context)
-        {
-            if (!NetworkManager.Singleton) return;
-            NetworkManager.Singleton.Shutdown();
-            Debug.Log("Host stopped via input");
-        }
-
-        private void OnStartHostPerformed(InputAction.CallbackContext context)
-        {
-            if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsServer)
-            {
-                NetworkManager.Singleton.StartHost();
-                Debug.Log("Host started via input");
-            }
-        }
-
         public override void OnNetworkSpawn()
         {
             if (IsServer)
@@ -129,7 +57,7 @@ namespace Network.Platformer
             }
 
             CanStartGame.OnValueChanged += OnCanStartGameValueChanged;
-            IsGameStarted.OnValueChanged += OnGameStartedValueChanged;
+            IsGameInProgress.OnValueChanged += OnGameInProgressValueChanged;
             CountdownTimer.OnValueChanged += OnCountdownTimerChanged;
         }
 
@@ -141,7 +69,7 @@ namespace Network.Platformer
             }
 
             CanStartGame.OnValueChanged -= OnCanStartGameValueChanged;
-            IsGameStarted.OnValueChanged -= OnGameStartedValueChanged;
+            IsGameInProgress.OnValueChanged -= OnGameInProgressValueChanged;
             CountdownTimer.OnValueChanged -= OnCountdownTimerChanged;
         }
 
@@ -149,10 +77,33 @@ namespace Network.Platformer
         {
             if (!IsServer) return;
 
-            if (data.EventType is ConnectionEvent.ClientConnected or ConnectionEvent.ClientDisconnected)
+            if (data.EventType == ConnectionEvent.ClientConnected)
+            {
+                HandleClientConnected(data.ClientId);
+            }
+            else if (data.EventType == ConnectionEvent.ClientDisconnected)
+            {
+                HandleClientDisconnected(data.ClientId);
+            }
+        }
+
+        private void HandleClientConnected(ulong clientId)
+        {
+            if (IsGameInProgress.Value)
+            {
+                spectatorPlayers.Add(clientId);
+                SetPlayerAsSpectatorClientRpc(clientId);
+            }
+            else
             {
                 CheckPlayerCount();
             }
+        }
+
+        private void HandleClientDisconnected(ulong clientId)
+        {
+            spectatorPlayers.Remove(clientId);
+            CheckPlayerCount();
         }
 
         private void CheckPlayerCount()
@@ -160,7 +111,7 @@ namespace Network.Platformer
             if (!IsServer) return;
 
             int connectedPlayers = NetworkManager.Singleton.ConnectedClientsList.Count;
-            CanStartGame.Value = connectedPlayers >= minPlayersToStart && !IsGameStarted.Value;
+            CanStartGame.Value = connectedPlayers >= minPlayersToStart && !IsGameInProgress.Value;
         }
 
         public void StartGame()
@@ -173,22 +124,18 @@ namespace Network.Platformer
         [ServerRpc(RequireOwnership = false)]
         private void StartGameServerRpc()
         {
-            if (IsGameStarted.Value || !CanStartGame.Value) return;
+            if (IsGameInProgress.Value || !CanStartGame.Value) return;
 
-            IsGameStarted.Value = true;
+            IsGameInProgress.Value = true;
             CanStartGame.Value = false;
+            spectatorPlayers.Clear();
 
-            NotifyLobbyLeftClientRpc();
+            if (NetworkConnectionManager.Instance != null)
+            {
+                NetworkConnectionManager.Instance.LoadLevelScene();
+            }
 
-            NetworkManager.Singleton.SceneManager.LoadScene(gameSceneName, LoadSceneMode.Single);
-            
             StartCoroutine(StartCountdownSequence());
-        }
-
-        [ClientRpc]
-        private void NotifyLobbyLeftClientRpc()
-        {
-            OnLobbyLeft?.Invoke();
         }
 
         private IEnumerator StartCountdownSequence()
@@ -214,21 +161,17 @@ namespace Network.Platformer
         {
             foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
             {
-                if (client.PlayerObject != null)
-                {
-                    var playerLife = client.PlayerObject.GetComponent<PlayerLife>();
-                    if (playerLife != null)
-                    {
-                        playerLife.ResetLife();
-                        playerLife.PauseLife();
-                    }
+                if (client.PlayerObject == null || spectatorPlayers.Contains(client.ClientId))
+                    continue;
 
-                    var playerController = client.PlayerObject.GetComponent<PlayerController>();
-                    if (playerController != null)
-                    {
-                        DisablePlayerInputClientRpc(client.ClientId);
-                    }
+                var playerLife = client.PlayerObject.GetComponent<PlayerLife>();
+                if (playerLife != null)
+                {
+                    playerLife.ResetLife();
+                    playerLife.PauseLife();
                 }
+
+                DisablePlayerInputClientRpc(client.ClientId);
             }
         }
 
@@ -236,15 +179,108 @@ namespace Network.Platformer
         {
             foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
             {
+                if (client.PlayerObject == null || spectatorPlayers.Contains(client.ClientId))
+                    continue;
+
+                var playerLife = client.PlayerObject.GetComponent<PlayerLife>();
+                if (playerLife != null)
+                {
+                    playerLife.StartLife();
+                }
+
+                EnablePlayerInputClientRpc(client.ClientId);
+            }
+        }
+
+        public void EndGame()
+        {
+            if (!IsServer) return;
+
+            IsGameInProgress.Value = false;
+            spectatorPlayers.Clear();
+            
+            RespawnAllPlayers();
+            CheckPlayerCount();
+
+            if (NetworkConnectionManager.Instance != null)
+            {
+                NetworkConnectionManager.Instance.LoadLobbyScene();
+            }
+        }
+
+        private void RespawnAllPlayers()
+        {
+            foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
+            {
                 if (client.PlayerObject != null)
                 {
+                    var playerController = client.PlayerObject.GetComponent<PlayerController>();
+                    if (playerController != null)
+                    {
+                        playerController.RespawnPlayer(Vector2.zero);
+                        RespawnPlayerClientRpc(client.ClientId, Vector2.zero);
+                    }
+
                     var playerLife = client.PlayerObject.GetComponent<PlayerLife>();
                     if (playerLife != null)
                     {
-                        playerLife.StartLife();
+                        playerLife.ResetLife();
                     }
 
-                    EnablePlayerInputClientRpc(client.ClientId);
+                    var playerDeathHandler = client.PlayerObject.GetComponent<PlayerDeathHandler>();
+                    if (playerDeathHandler != null)
+                    {
+                        playerDeathHandler.IsDead.Value = false;
+                    }
+                }
+            }
+        }
+
+        [ClientRpc]
+        private void RespawnPlayerClientRpc(ulong targetClientId, Vector2 spawnPosition)
+        {
+            if (NetworkManager.Singleton.LocalClientId != targetClientId) return;
+
+            var playerObject = NetworkManager.Singleton.LocalClient?.PlayerObject;
+            if (playerObject != null)
+            {
+                var playerController = playerObject.GetComponent<PlayerController>();
+                if (playerController != null)
+                {
+                    playerController.RespawnPlayer(spawnPosition);
+                }
+            }
+        }
+
+        public bool IsPlayerSpectator(ulong clientId)
+        {
+            return spectatorPlayers.Contains(clientId);
+        }
+
+        [ClientRpc]
+        private void SetPlayerAsSpectatorClientRpc(ulong targetClientId)
+        {
+            if (NetworkManager.Singleton.LocalClientId != targetClientId) return;
+
+            var playerObject = NetworkManager.Singleton.LocalClient?.PlayerObject;
+            if (playerObject != null)
+            {
+                var spriteRenderer = playerObject.GetComponentInChildren<SpriteRenderer>();
+                if (spriteRenderer != null)
+                {
+                    spriteRenderer.enabled = false;
+                }
+
+                var colliders = playerObject.GetComponents<Collider2D>();
+                foreach (var col in colliders)
+                {
+                    col.enabled = false;
+                }
+
+                var playerController = playerObject.GetComponent<PlayerController>();
+                if (playerController != null)
+                {
+                    playerController.SetInputEnabled(false);
                 }
             }
         }
@@ -292,7 +328,7 @@ namespace Network.Platformer
             OnCanStartGameChanged?.Invoke(newValue);
         }
 
-        private void OnGameStartedValueChanged(bool oldValue, bool newValue)
+        private void OnGameInProgressValueChanged(bool oldValue, bool newValue)
         {
             if (newValue)
             {
@@ -305,7 +341,7 @@ namespace Network.Platformer
             OnCountdownTick?.Invoke(newValue);
         }
 
-        private void OnDestroy()
+        public override void OnDestroy()
         {
             if (Instance == this)
             {
