@@ -14,25 +14,18 @@ namespace Network.Platformer
         
 
         [Header("Settings")]
-        [SerializeField] private float maxLifeTime = 60f; // Segundos
-        [SerializeField] private float syncInterval = 1f; // Cada cuánto el server corrige
+        [SerializeField] private float maxLifeTime = 60f;
 
-        // 🔄 Vida sincronizada desde el servidor
         public NetworkVariable<float> LifeTime =
             new NetworkVariable<float>(default,
                 NetworkVariableReadPermission.Everyone,
                 NetworkVariableWritePermission.Server);
 
-        // 🔄 Estado del contador
         public NetworkVariable<bool> IsLifeActive =
             new NetworkVariable<bool>(false,
                 NetworkVariableReadPermission.Everyone,
                 NetworkVariableWritePermission.Server);
 
-        private float localLifeTime; // Predicción local
-        private float lastSyncTime;  // Control para sync
-
-        // 🔥 Evento al morir
         public event Action OnLifeZero;
 
         private void Start()
@@ -41,71 +34,50 @@ namespace Network.Platformer
             {
                 LifeTime.Value = maxLifeTime;
             }
-
-            
         }
 
         public override void OnNetworkSpawn()
         {
             LifeTime.OnValueChanged += OnLifeTimeChanged;
             IsLifeActive.OnValueChanged += OnLifeActiveChanged;
-
-            if (IsServer)
-            {
-                localLifeTime = LifeTime.Value;
-                ToggleLifeServerRpc(true);
-            }
-            else
-            {
-                localLifeTime = LifeTime.Value;
-            }
-
             UpdateUI();
         }
 
         private void Update()
         {
-            if (!IsOwner) return;
-
-            if (IsLifeActive.Value)
+            // Server handles the life countdown
+            if (IsServer && IsLifeActive.Value)
             {
-                localLifeTime -= Time.deltaTime;
-                if (localLifeTime < 0) localLifeTime = 0;
+                LifeTime.Value -= Time.deltaTime;
+                if (LifeTime.Value < 0) LifeTime.Value = 0;
 
-                UpdateUI();
-
-                // 🔄 Avisar al server si pasó intervalo de sync
-                if (Time.time - lastSyncTime > syncInterval)
+                if (LifeTime.Value <= 0)
                 {
-                    lastSyncTime = Time.time;
-                    SyncLifeToServerRpc(localLifeTime);
-                }
-
-                if (localLifeTime <= 0)
-                {
-                    TriggerLifeZeroServerRpc();
+                    IsLifeActive.Value = false;
+                    LifeZeroClientRpc();
                 }
             }
+            
+            // All clients update their UI
+            UpdateUI();
         }
 
         private void UpdateUI()
         {
             if (lifeBar != null)
-                lifeBar.UpdateBar(localLifeTime / maxLifeTime);
+                lifeBar.UpdateBar(LifeTime.Value / maxLifeTime);
         }
 
         private void OnLifeTimeChanged(float oldValue, float newValue)
         {
-            localLifeTime = newValue;
             UpdateUI();
         }
 
         private void OnLifeActiveChanged(bool oldValue, bool newValue)
         {
-            // Si querés, podés poner efectos al pausar/reanudar
         }
 
-        #region Public Controls (para otros scripts o UI)
+        #region Public Controls
         public void StartLife()
         {
             if (IsServer)
@@ -136,12 +108,6 @@ namespace Network.Platformer
 
         #region RPCs
         [ServerRpc]
-        private void SyncLifeToServerRpc(float clientLife)
-        {
-            LifeTime.Value = Mathf.Clamp(clientLife, 0, maxLifeTime);
-        }
-
-        [ServerRpc]
         private void ToggleLifeServerRpc(bool active)
         {
             IsLifeActive.Value = active;
@@ -152,14 +118,6 @@ namespace Network.Platformer
         {
             LifeTime.Value = maxLifeTime;
             IsLifeActive.Value = false;
-        }
-
-        [ServerRpc]
-        private void TriggerLifeZeroServerRpc()
-        {
-            LifeTime.Value = 0;
-            IsLifeActive.Value = false;
-            LifeZeroClientRpc();
         }
 
         [ClientRpc]

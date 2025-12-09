@@ -8,6 +8,7 @@ namespace Network.Platformer
 {
     public class MenuUI : MonoBehaviour
     {
+       
         [Header("Menu Panel")]
         [SerializeField] private GameObject menuPanel;
 

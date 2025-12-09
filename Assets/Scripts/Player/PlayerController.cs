@@ -47,10 +47,18 @@ namespace Network.Platformer
         private bool inputEnabled = true;
         private bool isJumpHeld = false;
         private PlayerStun playerStun;
+        private bool isDead = false;
+        private Collider2D[] colliders;
         
         private static readonly int RunningHash = Animator.StringToHash("Running");
         private static readonly int IsInAirHash = Animator.StringToHash("IsInAir");
         private static readonly int JumpHash = Animator.StringToHash("Jump");
+        private static readonly int DeathHash = Animator.StringToHash("Death");
+        private static readonly int RespawnHash = Animator.StringToHash("Respawn");
+
+        [Header("Death Settings")]
+        [SerializeField] private float deathFadeAlpha = 0.5f;
+        [SerializeField] private Color deathTintColor = new Color(0.5f, 0.5f, 0.5f, 1f);
 
         public NetworkVariable<int> PlayerNumber = new NetworkVariable<int>(
             default,
@@ -85,6 +93,7 @@ namespace Network.Platformer
                 Debug.LogError($"No GroundChecker {gameObject.name}");
             
             playerStun = GetComponent<PlayerStun>();
+            colliders = GetComponents<Collider2D>();
         }
 
         public override void OnNetworkSpawn()
@@ -115,11 +124,33 @@ namespace Network.Platformer
         private async void TeleportOnSpawn()
         {
             await Task.Delay(1000);
-            TeleportTo(new Vector2(0,4));
+            RequestTeleportServerRpc(new Vector2(0, 4));
         }
+
+        [ServerRpc(RequireOwnership = false)]
+        private void RequestTeleportServerRpc(Vector2 position, ServerRpcParams rpcParams = default)
+        {
+            TeleportClientRpc(position, new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new ulong[] { rpcParams.Receive.SenderClientId }
+                }
+            });
+        }
+
+        [ClientRpc]
+        private void TeleportClientRpc(Vector2 position, ClientRpcParams rpcParams = default)
+        {
+            TeleportTo(position);
+        }
+
         private void TeleportTo(Vector2 vector2)
         {
-            rb.Rigidbody2D.position = vector2;
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.position = vector2;
+            }
         }
 
         private void OnDestroy()
@@ -178,7 +209,7 @@ namespace Network.Platformer
         private void Update()
         {
             spriteRen.flipX = lastDirection < 0;
-            if (!IsOwner || !inputEnabled) return;
+            if (!IsOwner || !inputEnabled || isDead) return;
 
             float direction = inputs.HorizontalAxis;
             
@@ -236,6 +267,8 @@ namespace Network.Platformer
 
         private void FixedUpdate()
         {
+            if (isDead) return;
+            
             // Both client and server apply gravity for consistency
             ApplyCustomGravity();
             
@@ -303,6 +336,86 @@ namespace Network.Platformer
                 rb.Rigidbody2D.linearVelocity = vel;
                 
                 anim.Animator.SetBool(RunningHash, false);
+            }
+        }
+
+        public void HandlePlayerDeath()
+        {
+            if (isDead) return;
+            
+            isDead = true;
+            
+            DisableInputs();
+            DisablePhysics();
+            DisableCollisions();
+            PlayDeathAnimation();
+            ApplyDeathVisuals();
+        }
+
+        private void DisableInputs()
+        {
+            inputEnabled = false;
+            
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.linearVelocity = Vector2.zero;
+            }
+            
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RunningHash, false);
+                anim.Animator.SetBool(IsInAirHash, false);
+            }
+        }
+
+        private void DisablePhysics()
+        {
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.linearVelocity = Vector2.zero;
+                rb.Rigidbody2D.gravityScale = 0f;
+                rb.Rigidbody2D.bodyType = RigidbodyType2D.Kinematic;
+            }
+        }
+
+        private void DisableCollisions()
+        {
+            if (colliders != null)
+            {
+                foreach (var col in colliders)
+                {
+                    if (col != null)
+                    {
+                        col.enabled = false;
+                    }
+                }
+            }
+        }
+
+        private void PlayDeathAnimation()
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetTrigger(DeathHash);
+                anim.Animator.SetBool(RespawnHash, false);
+            }
+        }
+
+        private void ApplyDeathVisuals()
+        {
+            if (spriteRen != null)
+            {
+                Color deathColor = deathTintColor;
+                deathColor.a = deathFadeAlpha;
+                spriteRen.color = deathColor;
+            }
+        }
+
+        public void EnableRespawn()
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RespawnHash, true);
             }
         }
 

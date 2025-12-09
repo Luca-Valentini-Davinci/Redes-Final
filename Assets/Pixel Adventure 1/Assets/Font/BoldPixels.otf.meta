@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 03f84b53ca9fc61478f3971736cde893
+guid: 3f99f5136898c6846845a2eb4018c6db
 TrueTypeFontImporter:
   externalObjects: {}
   serializedVersion: 4
@@ -9,7 +9,7 @@ TrueTypeFontImporter:
   characterPadding: 1
   includeFontData: 1
   fontNames:
-  - Minecraft
+  - BoldPixels
   fallbackFontReferences: []
   customCharacters: 
   fontRenderingMode: 0
