@@ -18,7 +18,10 @@ namespace Network.Platformer
         [Header("Colors")]
         [SerializeField] private Color victoryColor = Color.green;
         [SerializeField] private Color defeatColor = Color.red;
-
+        [Header("Sprites")]
+        [SerializeField] private Texture winSprite ;
+        [SerializeField] private Texture loseSprite ;
+        [SerializeField] private RawImage[] images;
         [Header("Spectator Panel")]
         [SerializeField] private GameObject spectatorPanel;
         [SerializeField] private TextMeshProUGUI spectatorText;
@@ -130,6 +133,14 @@ namespace Network.Platformer
             {
                 reasonText.text = GetReasonText(reason);
             }
+
+            if (images != null && images.Length > 0)
+            {
+                foreach (var image in images)
+                {
+                    image.texture = winSprite;
+                }
+            }
         }
 
         private void ShowDefeatScreen(GameEndReason reason, ulong winnerId)
@@ -150,6 +161,14 @@ namespace Network.Platformer
             if (reasonText != null)
             {
                 reasonText.text = GetReasonText(reason);
+            }
+
+            if (images != null && images.Length > 0)
+            {
+                foreach (var image in images)
+                {
+                    image.texture = loseSprite;
+                }
             }
         }
 
