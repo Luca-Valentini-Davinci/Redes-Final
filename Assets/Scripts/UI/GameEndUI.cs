@@ -45,7 +45,10 @@ namespace Network.Platformer
             }
 
             if (returnToLobbyButton != null)
+            {
                 returnToLobbyButton.onClick.AddListener(OnReturnToLobby);
+                UpdateReturnToLobbyButtonState();
+            }
 
             if (GameEndManager.Instance != null)
             {
@@ -100,6 +103,7 @@ namespace Network.Platformer
             if (gameEndPanel == null || NetworkManager.Singleton == null) return;
 
             gameEndPanel.SetActive(true);
+            UpdateReturnToLobbyButtonState();
 
             ulong localClientId = NetworkManager.Singleton.LocalClientId;
             bool isLocalPlayerWinner = winnerId == localClientId;
@@ -200,6 +204,14 @@ namespace Network.Platformer
                 GameEndReason.AllPlayersDead => "All players eliminated",
                 _ => ""
             };
+        }
+
+        private void UpdateReturnToLobbyButtonState()
+        {
+            if (returnToLobbyButton == null || NetworkManager.Singleton == null) return;
+
+            bool isHost = NetworkManager.Singleton.IsHost;
+            returnToLobbyButton.gameObject.SetActive(isHost);
         }
 
         private void OnReturnToLobby()

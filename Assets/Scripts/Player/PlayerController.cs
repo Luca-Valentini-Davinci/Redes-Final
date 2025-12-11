@@ -72,6 +72,26 @@ namespace Network.Platformer
                 NetworkVariableReadPermission.Everyone,
                 NetworkVariableWritePermission.Server);
 
+        private NetworkVariable<bool> isFacingLeft = new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Owner);
+
+        private NetworkVariable<bool> isRunning = new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Owner);
+
+        private NetworkVariable<bool> isInAir = new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Owner);
+
+        private NetworkVariable<bool> isJumping = new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Owner);
+
         private void Awake()
         {
             CalculateJumpPhysics();
@@ -115,6 +135,13 @@ namespace Network.Platformer
                 PlayerNumber.Value = NetworkManager.Singleton.ConnectedClientsList.Count;
             }
 
+            isFacingLeft.OnValueChanged += OnFacingDirectionChanged;
+            isRunning.OnValueChanged += OnRunningChanged;
+            isInAir.OnValueChanged += OnInAirChanged;
+            isJumping.OnValueChanged += OnJumpingChanged;
+
+            UpdateAllAnimationStates();
+
             if (IsClient)
             {
                 TeleportOnSpawn();
@@ -122,6 +149,62 @@ namespace Network.Platformer
             if (IsOwner)
             {
                 SubscribeInputs();
+            }
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            isFacingLeft.OnValueChanged -= OnFacingDirectionChanged;
+            isRunning.OnValueChanged -= OnRunningChanged;
+            isInAir.OnValueChanged -= OnInAirChanged;
+            isJumping.OnValueChanged -= OnJumpingChanged;
+        }
+
+        private void OnFacingDirectionChanged(bool oldValue, bool newValue)
+        {
+            UpdateSpriteFlip();
+        }
+
+        private void OnRunningChanged(bool oldValue, bool newValue)
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RunningHash, newValue);
+            }
+        }
+
+        private void OnInAirChanged(bool oldValue, bool newValue)
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(IsInAirHash, newValue);
+            }
+        }
+
+        private void OnJumpingChanged(bool oldValue, bool newValue)
+        {
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(JumpHash, newValue);
+            }
+        }
+
+        private void UpdateAllAnimationStates()
+        {
+            UpdateSpriteFlip();
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RunningHash, isRunning.Value);
+                anim.Animator.SetBool(IsInAirHash, isInAir.Value);
+                anim.Animator.SetBool(JumpHash, isJumping.Value);
+            }
+        }
+
+        private void UpdateSpriteFlip()
+        {
+            if (spriteRen != null)
+            {
+                spriteRen.flipX = isFacingLeft.Value;
             }
         }
 
@@ -146,7 +229,13 @@ namespace Network.Platformer
         [ClientRpc]
         private void TeleportClientRpc(Vector2 position, ClientRpcParams rpcParams = default)
         {
-            TeleportTo(position);
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.linearVelocity = Vector2.zero;
+                rb.Rigidbody2D.position = position;
+            }
+            
+            transform.position = position;
         }
 
         private void TeleportTo(Vector2 vector2)
@@ -181,28 +270,31 @@ namespace Network.Platformer
             
             isJumpHeld = true;
             
-            // Local jump for immediate feedback
             Vector2 vel = rb.Rigidbody2D.linearVelocity;
             vel.y = jumpVelocity;
             rb.Rigidbody2D.linearVelocity = vel;
             
-            anim.Animator.SetBool(JumpHash, true);
+            isJumping.Value = true;
             
-            // Notify server
             JumpServerRpc();
         }
 
         private void Update()
         {
-            spriteRen.flipX = lastDirection < 0;
             if (!IsOwner || !inputEnabled || isDead) return;
 
             float direction = inputs.HorizontalAxis;
             
             if (direction != 0)
+            {
                 lastDirection = direction;
+                bool shouldFaceLeft = direction < 0;
+                if (isFacingLeft.Value != shouldFaceLeft)
+                {
+                    isFacingLeft.Value = shouldFaceLeft;
+                }
+            }
 
-            // Update jump hold state
             if (isJumpHeld && !_groundChecker.IsGrounded)
             {
                 if (rb.Rigidbody2D.linearVelocity.y <= 0)
@@ -216,13 +308,8 @@ namespace Network.Platformer
                 isJumpHeld = false;
             }
 
-            // Apply movement locally (Owner authority)
             ApplyMovement(direction);
-            
-            // Update visuals locally
-            UpdateVisuals(direction);
-            
-            // Sync to server
+            UpdateAnimationStates(direction);
             SyncMovementServerRpc(direction, lastDirection, isJumpHeld);
         }
 
@@ -240,22 +327,34 @@ namespace Network.Platformer
             rb.Rigidbody2D.linearVelocity = vel;
         }
 
-        private void UpdateVisuals(float direction)
+        private void UpdateAnimationStates(float direction)
         {
-            spriteRen.flipX = lastDirection < 0;
-            anim.Animator.SetBool(RunningHash, Mathf.Abs(direction) > 0.01f);
-            anim.Animator.SetBool(IsInAirHash, !_groundChecker.IsGrounded);
+            bool shouldBeRunning = Mathf.Abs(direction) > 0.01f;
+            if (isRunning.Value != shouldBeRunning)
+            {
+                isRunning.Value = shouldBeRunning;
+            }
+
+            bool shouldBeInAir = !_groundChecker.IsGrounded;
+            if (isInAir.Value != shouldBeInAir)
+            {
+                isInAir.Value = shouldBeInAir;
+            }
 
             Vector2 vel = rb.Rigidbody2D.linearVelocity;
             if (!_groundChecker.IsGrounded && vel.y < 0)
-                anim.Animator.SetBool(JumpHash, false);
+            {
+                if (isJumping.Value)
+                {
+                    isJumping.Value = false;
+                }
+            }
         }
 
         private void FixedUpdate()
         {
             if (isDead) return;
             
-            // Both client and server apply gravity for consistency
             ApplyCustomGravity();
             
             if (_groundChecker.IsGrounded)
@@ -321,7 +420,10 @@ namespace Network.Platformer
                 vel.x = 0;
                 rb.Rigidbody2D.linearVelocity = vel;
                 
-                anim.Animator.SetBool(RunningHash, false);
+                if (IsOwner)
+                {
+                    isRunning.Value = false;
+                }
             }
         }
 
@@ -334,7 +436,7 @@ namespace Network.Platformer
             DisableInputs();
             DisablePhysics();
             DisableCollisions();
-            PlayDeathAnimation();
+            PlayDeathAnimationServerRpc();
             ApplyDeathVisuals();
         }
 
@@ -347,10 +449,10 @@ namespace Network.Platformer
                 rb.Rigidbody2D.linearVelocity = Vector2.zero;
             }
             
-            if (anim != null && anim.Animator != null)
+            if (IsOwner)
             {
-                anim.Animator.SetBool(RunningHash, false);
-                anim.Animator.SetBool(IsInAirHash, false);
+                isRunning.Value = false;
+                isInAir.Value = false;
             }
         }
 
@@ -378,7 +480,14 @@ namespace Network.Platformer
             }
         }
 
-        private void PlayDeathAnimation()
+        [ServerRpc(RequireOwnership = false)]
+        private void PlayDeathAnimationServerRpc()
+        {
+            PlayDeathAnimationClientRpc();
+        }
+
+        [ClientRpc]
+        private void PlayDeathAnimationClientRpc()
         {
             if (anim != null && anim.Animator != null)
             {
@@ -419,6 +528,77 @@ namespace Network.Platformer
             inputEnabled = true;
             
             TriggerRespawnAnimationClientRpc();
+        }
+
+        [ClientRpc]
+        public void ResetPlayerStateClientRpc()
+        {
+            Debug.Log($"[PlayerController] Resetting state for player {OwnerClientId} on client {NetworkManager.Singleton.LocalClientId}");
+            
+            // Reset all internal states
+            isDead = false;
+            inputEnabled = true;
+            isJumpHeld = false;
+            lastDirection = 1f;
+
+            // Reset rigidbody
+            if (rb != null && rb.Rigidbody2D != null)
+            {
+                rb.Rigidbody2D.bodyType = RigidbodyType2D.Dynamic;
+                rb.Rigidbody2D.gravityScale = 1f;
+                rb.Rigidbody2D.linearVelocity = Vector2.zero;
+                rb.Rigidbody2D.angularVelocity = 0f;
+            }
+
+            // Reset colliders
+            if (colliders != null)
+            {
+                foreach (var col in colliders)
+                {
+                    if (col != null)
+                    {
+                        col.enabled = true;
+                    }
+                }
+            }
+
+            // Reset visuals
+            if (spriteRen != null)
+            {
+                spriteRen.color = Color.white;
+                spriteRen.enabled = true;
+            }
+
+            // Reset animator
+            if (anim != null && anim.Animator != null)
+            {
+                anim.Animator.SetBool(RunningHash, false);
+                anim.Animator.SetBool(IsInAirHash, false);
+                anim.Animator.SetBool(JumpHash, false);
+                anim.Animator.SetBool(DeathHash, false);
+                anim.Animator.SetBool(RespawnHash, false);
+            }
+
+            // Reset network animation states (only if owner)
+            if (IsOwner)
+            {
+                isRunning.Value = false;
+                isInAir.Value = false;
+                isJumping.Value = false;
+                isFacingLeft.Value = false;
+            }
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        public void FullResetPlayerServerRpc()
+        {
+            FullResetPlayerClientRpc();
+        }
+
+        [ClientRpc]
+        private void FullResetPlayerClientRpc()
+        {
+            ResetPlayerStateClientRpc();
         }
 
         [ClientRpc]
@@ -474,7 +654,7 @@ namespace Network.Platformer
         [ServerRpc]
         private void SyncMovementServerRpc(float direction, float facingDirection, bool jumpHeld)
         {
-            if (!IsOwner) // Server validates
+            if (!IsOwner)
             {
                 isJumpHeld = jumpHeld;
                 lastDirection = facingDirection;
@@ -484,8 +664,7 @@ namespace Network.Platformer
         [ServerRpc]
         private void JumpServerRpc()
         {
-            // Server already sees the jump from NetworkRigidbody sync
-            // This is just for validation if needed
+            // Server validation if needed
         }
 
         [ServerRpc]

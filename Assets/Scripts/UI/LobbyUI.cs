@@ -70,12 +70,13 @@ namespace Network.Platformer
         {
             if (NetworkManager.Singleton == null) return;
 
-            if (NetworkManager.Singleton.IsHost)
+            bool wasHost = NetworkManager.Singleton.IsHost;
+    
+            if (wasHost)
             {
                 NetworkManager.Singleton.Shutdown();
             }
-            
-            if (NetworkConnectionManager.Instance != null)
+            else if (NetworkConnectionManager.Instance != null)
             {
                 NetworkConnectionManager.Instance.ReturnToMainMenu();
             }

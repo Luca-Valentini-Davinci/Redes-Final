@@ -13,6 +13,7 @@ namespace Network.Platformer
 
         [Header("Level Settings")]
         [SerializeField] private float levelDurationMinutes = 5f;
+        [SerializeField] private float firstFruitSpawnInterval = 5f;
         [SerializeField] private float fruitSpawnInterval = 10f;
         [SerializeField] private int baseFruitsPerSpawn = 3;
         [SerializeField] private int additionalFruitsPerPlayer = 1;
@@ -85,8 +86,14 @@ namespace Network.Platformer
             if (IsServer)
             {
                 RemainingTime.Value = levelDurationSeconds;
-                PositionPlayersAtStart();
+                StartCoroutine(DelayedPositionPlayers());
             }
+        }
+
+        private IEnumerator DelayedPositionPlayers()
+        {
+            yield return new WaitForSeconds(0.5f);
+            PositionPlayersAtStart();
         }
 
         public override void OnNetworkDespawn()
@@ -109,13 +116,7 @@ namespace Network.Platformer
                     if (playerStartPositions[playerIndex] != null)
                     {
                         Vector2 spawnPosition = playerStartPositions[playerIndex].position;
-                        TeleportPlayerClientRpc(spawnPosition, new ClientRpcParams
-                        {
-                            Send = new ClientRpcSendParams
-                            {
-                                TargetClientIds = new ulong[] { client.ClientId }
-                            }
-                        });
+                        TeleportPlayerClientRpc(client.ClientId, spawnPosition);
                     }
                     playerIndex++;
                 }
@@ -123,16 +124,21 @@ namespace Network.Platformer
         }
 
         [ClientRpc]
-        private void TeleportPlayerClientRpc(Vector2 position, ClientRpcParams rpcParams = default)
+        private void TeleportPlayerClientRpc(ulong targetClientId, Vector2 position)
         {
+            if (NetworkManager.Singleton.LocalClientId != targetClientId) return;
+
             var playerObject = NetworkManager.Singleton.LocalClient?.PlayerObject;
             if (playerObject != null)
             {
                 var networkRigidbody = playerObject.GetComponent<Unity.Netcode.Components.NetworkRigidbody2D>();
                 if (networkRigidbody != null && networkRigidbody.Rigidbody2D != null)
                 {
+                    networkRigidbody.Rigidbody2D.linearVelocity = Vector2.zero;
                     networkRigidbody.Rigidbody2D.position = position;
                 }
+                
+                playerObject.transform.position = position;
             }
         }
 
@@ -169,9 +175,16 @@ namespace Network.Platformer
 
         private IEnumerator FruitSpawnerRoutine()
         {
+                yield return new WaitForSeconds(firstFruitSpawnInterval);
+                if (IsLevelActive.Value)
+                {
+                    CleanupInactiveFruits();
+                    SpawnFruits();
+                }
             while (IsLevelActive.Value)
             {
-                yield return new WaitForSeconds(fruitSpawnInterval);
+                int time = (int)Random.Range(fruitSpawnInterval/2, fruitSpawnInterval);
+                yield return new WaitForSeconds(time);
 
                 if (IsLevelActive.Value)
                 {

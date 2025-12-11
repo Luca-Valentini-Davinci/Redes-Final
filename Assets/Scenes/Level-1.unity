@@ -2216,7 +2216,7 @@ Transform:
   m_GameObject: {fileID: 634272756}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.88, y: 0.1679, z: 0}
+  m_LocalPosition: {x: -0.88, y: 0.181, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -5833,7 +5833,7 @@ Transform:
   m_GameObject: {fileID: 785606920}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 2, y: 0.174, z: 0}
+  m_LocalPosition: {x: 2, y: 0.187, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6379,10 +6379,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Network.Platformer.LevelManager
   ShowTopMostFoldoutHeaderGroup: 1
   levelDurationMinutes: 5
-  fruitSpawnInterval: 25
+  firstFruitSpawnInterval: 5
+  fruitSpawnInterval: 15
   baseFruitsPerSpawn: 2
   additionalFruitsPerPlayer: 1
-  maxActiveFruits: 6
+  maxActiveFruits: 8
   playerStartPositions:
   - {fileID: 1861580840}
   - {fileID: 785606921}
@@ -6935,7 +6936,7 @@ Transform:
   m_GameObject: {fileID: 1527564345}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.56, y: 0.4944, z: 0}
+  m_LocalPosition: {x: 0.56, y: 0.526, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -7371,7 +7372,7 @@ Transform:
   m_GameObject: {fileID: 1861580839}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -2.08, y: 0.4909, z: 0}
+  m_LocalPosition: {x: -2.08, y: 0.497, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -7681,7 +7682,9 @@ MonoBehaviour:
   defeatColor: {r: 1, g: 0, b: 0, a: 1}
   winSprite: {fileID: 2800000, guid: 4668f08864533f24b9b5980d5cc57089, type: 3}
   loseSprite: {fileID: 2800000, guid: 282fa6659f7eabb4f88d7cd347ae7723, type: 3}
-  images: []
+  images:
+  - {fileID: 1409465951}
+  - {fileID: 1968532503}
   spectatorPanel: {fileID: 1847300488}
   spectatorText: {fileID: 86619158}
 --- !u!1 &2113959382

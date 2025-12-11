@@ -76,17 +76,26 @@ namespace Network.Platformer
 
         private async void FadeCountDown()
         {
-            var time = 1f;
-            var t = 0f;
-            var col = Color.white;
-            while (t< time)
+            try
             {
-                t+=Time.deltaTime;
-                col.a = Mathf.Clamp01(1-t);
-                countdownText.color = col;
-                await Task.Yield();
+                var time = 1f;
+                var t = 0f;
+                var col = Color.white;
+        
+                while (t < time && countdownText != null)
+                {
+                    t += Time.deltaTime;
+                    col.a = Mathf.Clamp01(1 - t);
+                    countdownText.color = col;
+                    await Task.Yield();
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"FadeCountDown interrupted: {e.Message}");
             }
         }
+
 
         private void OnCountdownFinished()
         {

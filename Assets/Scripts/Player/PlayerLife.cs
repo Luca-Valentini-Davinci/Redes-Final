@@ -28,16 +28,23 @@ namespace Network.Platformer
 
         public event Action OnLifeZero;
 
-        private void Start()
+        // private void Start()
+        // {
+        //     if (IsServer)
+        //     {
+        //         LifeTime.Value = maxLifeTime;
+        //     }
+        // }
+
+        public override void OnNetworkSpawn()
         {
+            base.OnNetworkSpawn();
+    
             if (IsServer)
             {
                 LifeTime.Value = maxLifeTime;
             }
-        }
-
-        public override void OnNetworkSpawn()
-        {
+    
             LifeTime.OnValueChanged += OnLifeTimeChanged;
             IsLifeActive.OnValueChanged += OnLifeActiveChanged;
             UpdateUI();
